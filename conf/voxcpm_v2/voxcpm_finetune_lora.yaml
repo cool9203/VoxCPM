@@ -21,6 +21,8 @@ lambdas:
 
 wandb_project: VoxCPM
 wandb_run_name: finetune_lora
+wandb_run_id: null
+wandb_resume: allow
 
 # LoRA configuration
 lora:

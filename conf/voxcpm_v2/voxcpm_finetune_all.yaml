@@ -21,3 +21,5 @@ lambdas:
 
 wandb_project: VoxCPM
 wandb_run_name: finetune_all
+wandb_run_id: null
+wandb_resume: allow
