@@ -15,7 +15,6 @@ warmup_steps: 100
 max_steps: 1000
 max_batch_tokens: 8192
 save_path: /path/to/checkpoints/finetune_lora
-tensorboard: /path/to/logs/finetune_lora
 lambdas:
   loss/diff: 1.0
   loss/stop: 1.0
