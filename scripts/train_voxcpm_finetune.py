@@ -7,15 +7,16 @@ project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root / "src"))
 
 import contextlib
+import os
+import signal
 from typing import Dict
 
 import argbind
 import torch
-from tensorboardX import SummaryWriter
 from torch.optim import AdamW
 from transformers import get_cosine_schedule_with_warmup
-import signal
-import os
+
+import wandb
 
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
@@ -25,11 +26,13 @@ try:
     SAFETENSORS_AVAILABLE = True
 except ImportError:
     SAFETENSORS_AVAILABLE = False
-    print("Warning: safetensors not available, will use pytorch format", file=sys.stderr)
+    print(
+        "Warning: safetensors not available, will use pytorch format", file=sys.stderr
+    )
 
 import json
 
-from voxcpm.model import VoxCPMModel, VoxCPM2Model
+from voxcpm.model import VoxCPM2Model, VoxCPMModel
 from voxcpm.model.voxcpm import LoRAConfig
 from voxcpm.training import (
     Accelerator,
@@ -66,6 +69,8 @@ def train(
     # Distribution options (for LoRA checkpoints)
     hf_model_id: str = "",  # HuggingFace model ID (e.g., "openbmb/VoxCPM1.5")
     distribute: bool = False,  # If True, save hf_model_id as base_model; otherwise save pretrained_path
+    wandb_project: str = "VoxCPM",
+    wandb_run_name: str = "finetune",
 ):
     _ = config_path
 
@@ -84,8 +89,12 @@ def train(
         tb_dir.mkdir(parents=True, exist_ok=True)
     accelerator.barrier()  # Wait for directory creation
 
-    writer = SummaryWriter(log_dir=str(tb_dir)) if accelerator.rank == 0 else None
-    tracker = TrainingTracker(writer=writer, log_file=str(save_dir / "train.log"), rank=accelerator.rank)
+    wandb_run = (
+        wandb.init(project=wandb_project, name=wandb_run_name)
+        if accelerator.rank == 0
+        else None
+    )
+    tracker = TrainingTracker(writer=wandb_run, rank=accelerator.rank)
 
     # Auto-detect model architecture from config.json
     with open(os.path.join(pretrained_path, "config.json"), "r", encoding="utf-8") as _f:
@@ -328,7 +337,7 @@ def train(
                     accelerator,
                     tracker,
                     lambdas,
-                    writer=writer,
+                    writer=None,
                     step=step,
                     val_ds=val_ds,
                     audio_vae=audio_vae_for_gen,
@@ -342,9 +351,8 @@ def train(
                 save_checkpoint(model, optimizer, scheduler, save_dir, step, pretrained_path, hf_model_id, distribute)
 
     if accelerator.rank == 0:
-        save_checkpoint(model, optimizer, scheduler, save_dir, num_iters, pretrained_path, hf_model_id, distribute)
-    if writer:
-        writer.close()
+    if wandb_run:
+        wandb_run.finish()
 
 
 def validate(

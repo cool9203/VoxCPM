@@ -54,12 +54,15 @@ class TrainingTracker:
             formatted = ", ".join(f"{k}: {v:.6f}" for k, v in metrics.items())
             self.print(f"[{split}] step {self.step}: {formatted}{dt_str}")
         if self.writer is not None:
+            log_data = dict()
             for key, value in metrics.items():
                 if isinstance(value, (int, float)):
-                    self.writer.add_scalar(f"{split}/{key}", value, self.step)
+                    log_data[f"{split}/{key}"] = value
+            self.writer.log(log_data)
 
     def done(self, split: str, message: str):
         self.print(f"[{split}] {message}")
+        self.writer.finish()
 
     # ------------------------------------------------------------------ #
     # State dict

@@ -15,7 +15,9 @@ warmup_steps: 100
 max_steps: 1000
 max_batch_tokens: 8192
 save_path: /path/to/checkpoints/finetune_all
-tensorboard: /path/to/logs/finetune_all
 lambdas:
   loss/diff: 1.0
   loss/stop: 1.0
+
+wandb_project: VoxCPM
+wandb_run_name: finetune_all

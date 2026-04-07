@@ -20,6 +20,9 @@ lambdas:
   loss/diff: 1.0
   loss/stop: 1.0
 
+wandb_project: VoxCPM
+wandb_run_name: finetune_lora
+
 # LoRA configuration
 lora:
   enable_lm: true
