@@ -42,7 +42,12 @@ class TrainingTracker:
                 with self.log_file.open("a", encoding="utf-8") as f:
                     f.write(message + "\n")
 
-    def log_metrics(self, metrics: Dict[str, float], split: str):
+    def log_metrics(
+        self,
+        metrics: Dict[str, float],
+        split: str,
+        step: int | None = None,
+    ):
         if self.rank == 0:
             now = time.time()
             dt_str = ""
@@ -54,12 +59,15 @@ class TrainingTracker:
             formatted = ", ".join(f"{k}: {v:.6f}" for k, v in metrics.items())
             self.print(f"[{split}] step {self.step}: {formatted}{dt_str}")
         if self.writer is not None:
+            log_data = dict()
             for key, value in metrics.items():
                 if isinstance(value, (int, float)):
-                    self.writer.add_scalar(f"{split}/{key}", value, self.step)
+                    log_data[f"{split}/{key}"] = value
+            self.writer.log(log_data, step=step)
 
     def done(self, split: str, message: str):
         self.print(f"[{split}] {message}")
+        self.writer.finish()
 
     # ------------------------------------------------------------------ #
     # State dict

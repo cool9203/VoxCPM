@@ -17,10 +17,14 @@ max_steps: 1000
 max_batch_tokens: 8192
 max_grad_norm: 1.0        # gradient clipping max norm; 0 = disabled
 save_path: /path/to/checkpoints/finetune_lora
-tensorboard: /path/to/logs/finetune_lora
 lambdas:
   loss/diff: 1.0
   loss/stop: 1.0
+
+wandb_project: VoxCPM
+wandb_run_name: finetune_lora
+wandb_run_id: null
+wandb_resume: allow
 
 # LoRA configuration
 lora:
