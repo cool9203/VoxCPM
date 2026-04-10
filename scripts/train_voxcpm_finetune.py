@@ -10,7 +10,7 @@ import contextlib
 import os
 import signal
 from datetime import datetime as dt
-from typing import Dict
+from typing import Dict, Optional
 
 import argbind
 import torch
@@ -67,7 +67,7 @@ def train(
     save_path: str = "checkpoints",
     tensorboard: str = "",
     lambdas: Dict[str, float] = {"loss/diff": 1.0, "loss/stop": 1.0},
-    lora: dict | None = None,
+    lora: Optional[dict] = None,
     config_path: str = "",
     max_grad_norm: float = 0.0,  # gradient clipping; 0 = disabled (backward compat)
     # Distribution options (for LoRA checkpoints)
@@ -75,7 +75,7 @@ def train(
     distribute: bool = False,  # If True, save hf_model_id as base_model; otherwise save pretrained_path
     wandb_project: str = "VoxCPM",
     wandb_run_name: str = "finetune",
-    wandb_run_id: str | None = None,
+    wandb_run_id: Optional[str] = None,
     wandb_resume: str = "allow",
 ):
     _ = config_path
@@ -376,8 +376,8 @@ def train(
                 save_checkpoint(model, optimizer, scheduler, save_dir, step, pretrained_path, hf_model_id, distribute)
 
     if accelerator.rank == 0:
-    if wandb_run:
-        wandb_run.finish()
+        if wandb_run:
+            wandb_run.finish()
 
 
 def validate(

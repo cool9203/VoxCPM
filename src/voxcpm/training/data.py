@@ -11,7 +11,7 @@ from ..modules.audiovae import AudioVAE
 from .packers import AudioFeatureProcessingPacker
 
 DEFAULT_TEXT_COLUMN = "text"
-DEFAULT_AUDIO_COLUMN = "audio"
+DEFAULT_AUDIO_COLUMN = os.getenv("AUDIO_COLUMN", "audio")
 DEFAULT_ID_COLUMN = "dataset_id"
 
 
@@ -25,9 +25,9 @@ def load_audio_text_datasets(
     sample_rate: int = 16_000,
     num_proc: int = 1,
 ) -> Tuple[Dataset, Optional[Dataset]]:
-    data_files = {"train": train_manifest}
+    data_files = {"train": train_manifest.split(",")}
     if val_manifest:
-        data_files["validation"] = val_manifest
+        data_files["validation"] = val_manifest.split(",")
 
     dataset_dict: DatasetDict = load_dataset("json", data_files=data_files)
 
