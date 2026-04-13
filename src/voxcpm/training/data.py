@@ -10,7 +10,7 @@ from ..model.voxcpm import VoxCPMConfig
 from ..modules.audiovae import AudioVAE
 from .packers import AudioFeatureProcessingPacker
 
-DEFAULT_TEXT_COLUMN = "text"
+DEFAULT_TEXT_COLUMN = os.getenv("TEXT_COLUMN", "text")
 DEFAULT_AUDIO_COLUMN = os.getenv("AUDIO_COLUMN", "audio")
 DEFAULT_ID_COLUMN = "dataset_id"
 

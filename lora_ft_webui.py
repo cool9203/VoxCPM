@@ -146,7 +146,7 @@ def recognize_audio(audio_path):
         return ""
 
 
-def scan_lora_checkpoints(root_dir="lora", with_info=False):
+def scan_lora_checkpoints(root_dir=os.getenv("LORA_DIR", "lora"), with_info=False):
     """
     Scans for LoRA checkpoints in the lora directory.
 
@@ -158,37 +158,49 @@ def scan_lora_checkpoints(root_dir="lora", with_info=False):
         List of checkpoint paths, or list of (path, base_model) tuples if with_info=True
     """
     checkpoints = []
-    if not os.path.exists(root_dir):
-        os.makedirs(root_dir, exist_ok=True)
+    root_path = Path(root_dir)
 
-    # Look for lora_weights.safetensors recursively
-    for root, dirs, files in os.walk(root_dir):
-        if "lora_weights.safetensors" in files:
-            # Use the relative path from root_dir as the ID
-            rel_path = os.path.relpath(root, root_dir)
+    if not root_path.exists():
+        root_path.mkdir(parents=True, exist_ok=True)
+        return checkpoints
 
-            if with_info:
-                # Try to read base_model from lora_config.json
-                base_model = None
-                lora_config_file = os.path.join(root, "lora_config.json")
-                if os.path.exists(lora_config_file):
-                    try:
-                        with open(lora_config_file, "r", encoding="utf-8") as f:
-                            lora_info = json.load(f)
-                        base_model = lora_info.get("base_model", "Unknown")
-                    except (json.JSONDecodeError, OSError):
-                        pass
-                checkpoints.append((rel_path, base_model))
-            else:
-                checkpoints.append(rel_path)
+    # 只掃描 root_dir 底下的第一層目錄
+    for entry in root_path.iterdir():
+        if entry.is_dir():
+            # 定義權重檔與設定檔路徑
+            # 同時相容你自定義的 lora_weights 與 PEFT 標準的 adapter_model
+            has_weights = (
+                (entry / "lora_weights.safetensors").exists() or 
+                (entry / "adapter_model.safetensors").exists() or
+                (entry / "adapter_model.bin").exists()
+            )
+            
+            if has_weights:
+                checkpoint_id = entry.name  # 使用資料夾名稱作為 ID
+                
+                if with_info:
+                    base_model = "Unknown"
+                    # 優先檢查你的 lora_config.json，再檢查 PEFT 標準的 adapter_config.json
+                    config_files = ["lora_config.json", "adapter_config.json"]
+                    
+                    for config_name in config_files:
+                        config_path = entry / config_name
+                        if config_path.exists():
+                            try:
+                                with open(config_path, "r", encoding="utf-8") as f:
+                                    info = json.load(f)
+                                    # PEFT 標準欄位是 base_model_name_or_path
+                                    base_model = info.get("base_model") or info.get("base_model_name_or_path") or "Unknown"
+                                break # 找到一個就跳出
+                            except (json.JSONDecodeError, OSError):
+                                continue
+                    
+                    checkpoints.append((checkpoint_id, base_model))
+                else:
+                    checkpoints.append(checkpoint_id)
 
-    # Also check for checkpoints in the default location if they exist
-    default_ckpt = "checkpoints/finetune_lora"
-    if os.path.exists(os.path.join(root_dir, default_ckpt)):
-        # This might be covered by the walk, but good to be sure
-        pass
-
-    return sorted(checkpoints, reverse=True)
+    # 依照名稱排序（通常名稱含日期或步數，倒序排列可讓最新的在前）
+    return sorted(checkpoints, key=lambda x: x[0] if isinstance(x, tuple) else x, reverse=True)
 
 
 def load_lora_config_from_checkpoint(lora_path):
@@ -226,13 +238,12 @@ def load_model(pretrained_path, lora_path=None):
     lora_weights_path = None
 
     if lora_path:
-        full_lora_path = os.path.join("lora", lora_path)
-        if os.path.exists(full_lora_path):
-            lora_weights_path = full_lora_path
+        if os.path.exists(lora_path):
+            lora_weights_path = lora_path
             # Try to load LoRA config from lora_config.json
-            lora_config, _ = load_lora_config_from_checkpoint(full_lora_path)
+            lora_config, _ = load_lora_config_from_checkpoint(lora_path)
             if lora_config:
-                print(f"Loaded LoRA config from {full_lora_path}/lora_config.json", file=sys.stderr)
+                print(f"Loaded LoRA config from {lora_path}/lora_config.json", file=sys.stderr)
             else:
                 # Fallback to default config for old checkpoints
                 lora_config = get_default_lora_config()
@@ -260,8 +271,7 @@ def run_inference(text, prompt_wav, prompt_text, lora_selection, cfg_scale, step
 
         # 如果选择了 LoRA，尝试从其 config 读取 base_model
         if lora_selection and lora_selection != "None":
-            full_lora_path = os.path.join("lora", lora_selection)
-            lora_config_file = os.path.join(full_lora_path, "lora_config.json")
+            lora_config_file = os.path.join(lora_selection, "lora_config.json")
 
             if os.path.exists(lora_config_file):
                 try:
@@ -283,7 +293,7 @@ def run_inference(text, prompt_wav, prompt_text, lora_selection, cfg_scale, step
         # 加载模型
         try:
             print(f"Loading base model: {base_model_path}", file=sys.stderr)
-            load_model(base_model_path)
+            load_model(base_model_path, lora_selection)
             if lora_selection and lora_selection != "None":
                 print(f"Model loaded for LoRA: {lora_selection}", file=sys.stderr)
         except Exception as e:
@@ -294,10 +304,9 @@ def run_inference(text, prompt_wav, prompt_text, lora_selection, cfg_scale, step
     # Handle LoRA hot-swapping
     assert current_model is not None, "Model must be loaded before inference"
     if lora_selection and lora_selection != "None":
-        full_lora_path = os.path.join("lora", lora_selection)
-        print(f"Hot-loading LoRA: {full_lora_path}", file=sys.stderr)
+        print(f"Hot-loading LoRA: {lora_selection}", file=sys.stderr)
         try:
-            current_model.load_lora(full_lora_path)
+            current_model.load_lora(lora_selection)
             current_model.set_lora_enabled(True)
         except Exception as e:
             print(f"Error loading LoRA: {e}", file=sys.stderr)
