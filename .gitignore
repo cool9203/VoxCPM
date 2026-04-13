@@ -6,3 +6,4 @@ voxcpm.egg-info
 checkpoints
 logs
 wandb
+app_local.py
