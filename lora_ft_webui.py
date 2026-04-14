@@ -9,6 +9,7 @@ import gradio as gr
 import torch
 from pathlib import Path
 from typing import Optional
+import zh2tlpa
 
 # Add src to sys.path
 project_root = Path(__file__).parent
@@ -238,12 +239,12 @@ def load_model(pretrained_path, lora_path=None):
     lora_weights_path = None
 
     if lora_path:
-        if os.path.exists(lora_path):
-            lora_weights_path = lora_path
+        if os.path.exists(os.path.join(os.getenv("LORA_DIR", "lora"), lora_path)):
+            lora_weights_path = os.path.join(os.getenv("LORA_DIR", "lora"), lora_path)
             # Try to load LoRA config from lora_config.json
-            lora_config, _ = load_lora_config_from_checkpoint(lora_path)
+            lora_config, _ = load_lora_config_from_checkpoint(lora_weights_path)
             if lora_config:
-                print(f"Loaded LoRA config from {lora_path}/lora_config.json", file=sys.stderr)
+                print(f"Loaded LoRA config from {lora_weights_path}/lora_config.json", file=sys.stderr)
             else:
                 # Fallback to default config for old checkpoints
                 lora_config = get_default_lora_config()
@@ -271,7 +272,7 @@ def run_inference(text, prompt_wav, prompt_text, lora_selection, cfg_scale, step
 
         # 如果选择了 LoRA，尝试从其 config 读取 base_model
         if lora_selection and lora_selection != "None":
-            lora_config_file = os.path.join(lora_selection, "lora_config.json")
+            lora_config_file = os.path.join(os.getenv("LORA_DIR", "lora"), lora_selection, "lora_config.json")
 
             if os.path.exists(lora_config_file):
                 try:
@@ -306,9 +307,13 @@ def run_inference(text, prompt_wav, prompt_text, lora_selection, cfg_scale, step
     if lora_selection and lora_selection != "None":
         print(f"Hot-loading LoRA: {lora_selection}", file=sys.stderr)
         try:
-            current_model.load_lora(lora_selection)
+            lora_path = os.path.join(os.getenv("LORA_DIR", "lora"), lora_selection)
+            current_model.load_lora(lora_path)
             current_model.set_lora_enabled(True)
         except Exception as e:
+            import traceback
+
+            traceback.print_exc()
             print(f"Error loading LoRA: {e}", file=sys.stderr)
             return None, f"Error loading LoRA: {e}"
     else:
@@ -344,7 +349,7 @@ def run_inference(text, prompt_wav, prompt_text, lora_selection, cfg_scale, step
 
     try:
         audio_np = current_model.generate(
-            text=text,
+            text=zh2tlpa.convert_to_nan_tw(text),
             prompt_wav_path=final_prompt_wav,
             prompt_text=final_prompt_text,
             cfg_value=cfg_scale,

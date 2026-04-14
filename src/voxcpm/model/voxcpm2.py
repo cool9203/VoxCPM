@@ -1196,13 +1196,30 @@ class VoxCPM2Model(nn.Module):
         device = device or self.device
         lora_p = Path(lora_path)
 
-        # Try safetensors first, then fallback to .ckpt
+        # Try candidates if path is a directory
+        safetensors_file = None
+        ckpt_file = None
+        
         if lora_p.is_dir():
-            safetensors_file = lora_p / "lora_weights.safetensors"
-            ckpt_file = lora_p / "lora_weights.ckpt"
+            # Standard VoxCPM filenames
+            candidates_st = ["lora_weights.safetensors", "adapter_model.safetensors"]
+            candidates_ckpt = ["lora_weights.ckpt", "lora_weights.pth", "adapter_model.bin"]
+            
+            for c in candidates_st:
+                if (lora_p / c).exists():
+                    safetensors_file = lora_p / c
+                    break
+            
+            if not safetensors_file:
+                for c in candidates_ckpt:
+                    if (lora_p / c).exists():
+                        ckpt_file = lora_p / c
+                        break
         else:
-            safetensors_file = lora_p if lora_p.suffix == ".safetensors" else None
-            ckpt_file = lora_p if lora_p.suffix in [".ckpt", ".pth"] else None
+            if lora_p.suffix == ".safetensors":
+                safetensors_file = lora_p
+            elif lora_p.suffix in [".ckpt", ".pth", ".bin"]:
+                ckpt_file = lora_p
 
         # Load from safetensors if available
         if safetensors_file and safetensors_file.exists() and SAFETENSORS_AVAILABLE:
@@ -1211,7 +1228,12 @@ class VoxCPM2Model(nn.Module):
             ckpt = torch.load(ckpt_file, map_location=device, weights_only=False)
             state_dict = ckpt.get("state_dict", ckpt)
         else:
-            raise FileNotFoundError(f"LoRA checkpoint not found. Expected either {safetensors_file} or {ckpt_file}")
+            msg = f"LoRA checkpoint not found at {lora_path}."
+            if not safetensors_file and not ckpt_file:
+                msg += f" Expected a directory containing weights or a file with valid extension (.safetensors, .ckpt, .pth, .bin)."
+            else:
+                msg += f" Checked: {safetensors_file or 'N/A'} and {ckpt_file or 'N/A'}"
+            raise FileNotFoundError(msg)
 
         # Build param mapping (handle torch.compile's _orig_mod prefix)
         model_params = dict(self.named_parameters())
