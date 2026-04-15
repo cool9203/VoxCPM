@@ -50,7 +50,7 @@ def train(
     pretrained_path: str,
     train_manifest: str,
     val_manifest: str = "",
-    max_duration: Optional[dict] = None,
+    max_duration: Optional[float] = None,
     sample_rate: int = 16_000,
     out_sample_rate: int = 0,  # AudioVAE decoder output rate; used for TensorBoard audio logging
     batch_size: int = 1,
@@ -136,15 +136,16 @@ def train(
         return {"text_ids": text_ids}
 
     train_ds = train_ds.map(tokenize, batched=True, remove_columns=["text"])
-    if max_duration is not None and float(max_duration) > 0:
-        train_ds = train_ds.filter(lambda x: x["duration"] <= float(max_duration))
-        if val_ds is not None:
-            val_ds = val_ds.filter(lambda x: x["duration"] <= float(max_duration))
     # Save original validation texts for audio generation display
     val_texts = None
     if val_ds is not None:
         val_texts = list(val_ds["text"])  # Save original texts
         val_ds = val_ds.map(tokenize, batched=True, remove_columns=["text"])
+
+    if max_duration is not None:
+        train_ds = train_ds.filter(lambda x: 0 < x["duration"] <= float(max_duration))
+        if val_ds is not None:
+            val_ds = val_ds.filter(lambda x: 0 < x["duration"] <= float(max_duration))
 
     dataset_cnt = int(max(train_ds["dataset_id"])) + 1 if "dataset_id" in train_ds.column_names else 1
     num_train_samples = len(train_ds)
