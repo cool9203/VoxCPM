@@ -1,6 +1,40 @@
+import os
 from typing import List, Optional
 import torch
 from transformers import PreTrainedTokenizer
+
+_LOW_PRECISION_DTYPES = {"bfloat16", "bf16", "float16", "fp16"}
+_VALID_DTYPE_OVERRIDES = {
+    "bfloat16",
+    "bf16",
+    "float16",
+    "fp16",
+    "float32",
+    "fp32",
+}
+
+
+# Ref: https://github.com/OpenBMB/VoxCPM/issues/256#issuecomment-4235252732
+# Explicitly close partially-consumed generators so inference_mode cleanup
+# does not get deferred to Python's GC/finalizer path.
+def next_and_close(gen):
+    try:
+        return next(gen)
+    finally:
+        gen.close()
+
+
+def materialize_generation_seed(seed: Optional[int]) -> int:
+    """Return a concrete seed for a generation request."""
+    if seed is not None:
+        return int(seed)
+    return int(torch.seed() & 0xFFFFFFFF)
+
+
+def apply_generation_seed(seed: int) -> None:
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
 
 
 def mask_multichar_chinese_tokens(tokenizer: PreTrainedTokenizer):
@@ -125,6 +159,31 @@ def _has_mps() -> bool:
     return hasattr(torch.backends, "mps") and torch.backends.mps.is_available()
 
 
+def pick_runtime_dtype(device: str, configured_dtype: str) -> str:
+    """Pick a safe runtime dtype for the resolved device.
+
+    On Apple Silicon (MPS), bfloat16/float16 produce enough numerical drift
+    in the diffusion AR loop that the output is glitched and the model's
+    badcase detector triggers infinite retries. float32 is the only stable
+    option today. CUDA and CPU keep whatever the checkpoint was trained with.
+
+    Users can override with ``VOXCPM_MPS_DTYPE`` (e.g. ``bfloat16``) when
+    they want to test future MPS improvements.
+    """
+    if device != "mps":
+        return configured_dtype
+
+    override = os.environ.get("VOXCPM_MPS_DTYPE", "").strip().lower()
+    if override:
+        if override not in _VALID_DTYPE_OVERRIDES:
+            raise ValueError(f"VOXCPM_MPS_DTYPE='{override}' is not one of " f"{sorted(_VALID_DTYPE_OVERRIDES)}")
+        return override
+
+    if (configured_dtype or "").lower() in _LOW_PRECISION_DTYPES:
+        return "float32"
+    return configured_dtype
+
+
 def auto_select_device(preferred_device: Optional[str] = "cuda") -> str:
     """
     Choose a runtime device automatically.
@@ -165,15 +224,13 @@ def resolve_runtime_device(device: Optional[str], configured_device: str = "cuda
     if explicit.startswith("cuda"):
         if not torch.cuda.is_available():
             raise ValueError(
-                f"Requested device '{device}', but CUDA is not available. "
-                "Use device='auto' for automatic fallback."
+                f"Requested device '{device}', but CUDA is not available. " "Use device='auto' for automatic fallback."
             )
         return explicit
     if explicit == "mps":
         if not _has_mps():
             raise ValueError(
-                "Requested device 'mps', but MPS is not available. "
-                "Use device='auto' for automatic fallback."
+                "Requested device 'mps', but MPS is not available. " "Use device='auto' for automatic fallback."
             )
         return "mps"
     if explicit == "cpu":
