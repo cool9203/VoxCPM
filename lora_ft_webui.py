@@ -10,7 +10,6 @@ from typing import Optional
 import gradio as gr
 import torch
 import yaml
-import zh2tlpa
 
 # Add src to sys.path
 project_root = Path(__file__).parent
@@ -355,7 +354,7 @@ def run_inference(
     # Handle LoRA hot-swapping
     assert current_model is not None, "Model must be loaded before inference"
     if lora_selection and lora_selection != "None":
-        full_lora_path = os.path.join("lora", lora_selection)
+        full_lora_path = os.path.join(os.getenv("LORA_DIR", "lora"), lora_selection)
 
         if lora_just_loaded != lora_selection:
             new_lora_config, new_base_model = load_lora_config_from_checkpoint(
@@ -427,7 +426,7 @@ def run_inference(
 
     try:
         audio_np = current_model.generate(
-            text=zh2tlpa.convert_to_nan_tw(text),
+            text=text,
             prompt_wav_path=final_prompt_wav,
             prompt_text=final_prompt_text,
             cfg_value=cfg_scale,
