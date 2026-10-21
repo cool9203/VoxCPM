@@ -117,6 +117,9 @@ def train(
             pretrained_path = lora_model_config["base_model"]
             lora = lora_model_config["lora_config"]
 
+    with open(
+        os.path.join(pretrained_path, "config.json"), "r", encoding="utf-8"
+    ) as _f:
         _arch = json.load(_f).get("architecture", "voxcpm").lower()
     _model_cls = VoxCPM2Model if _arch == "voxcpm2" else VoxCPMModel
     LoRAConfig = LoRAConfigV2 if _arch == "voxcpm2" else LoRAConfigV1
