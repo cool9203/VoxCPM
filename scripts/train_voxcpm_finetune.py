@@ -109,7 +109,14 @@ def train(
     tracker = TrainingTracker(writer=wandb_run, rank=accelerator.rank)
 
     # Auto-detect model architecture from config.json
-    with open(os.path.join(pretrained_path, "config.json"), "r", encoding="utf-8") as _f:
+    lora_weight_path = None
+    if Path(pretrained_path, "lora_config.json").exists():
+        lora_weight_path = Path(pretrained_path, "lora_weights.safetensors")
+        with Path(pretrained_path, "lora_config.json").open("r") as _f:
+            lora_model_config = json.load(_f)
+            pretrained_path = lora_model_config["base_model"]
+            lora = lora_model_config["lora_config"]
+
         _arch = json.load(_f).get("architecture", "voxcpm").lower()
     _model_cls = VoxCPM2Model if _arch == "voxcpm2" else VoxCPMModel
     LoRAConfig = LoRAConfigV2 if _arch == "voxcpm2" else LoRAConfigV1
@@ -119,6 +126,13 @@ def train(
         pretrained_path, optimize=False, training=True, lora_config=LoRAConfig(**lora) if lora else None
     )
     tokenizer = base_model.text_tokenizer
+
+    if lora_weight_path:
+        from safetensors.torch import load_file
+
+        base_model = base_model.module if hasattr(base_model, "module") else base_model
+        state_dict = load_file(str(lora_weight_path))
+        base_model.load_state_dict(state_dict, strict=False)
 
     expected_sr = base_model.audio_vae.sample_rate
     assert sample_rate == expected_sr, (
