@@ -116,6 +116,12 @@ def train(
             lora_model_config = json.load(_f)
             pretrained_path = lora_model_config["base_model"]
             lora = lora_model_config["lora_config"]
+            print(
+                "Detected LoRA checkpoint. Base model:",
+                pretrained_path,
+                file=sys.stderr,
+            )
+            print("LoRA config:", lora, file=sys.stderr)
 
     with open(
         os.path.join(pretrained_path, "config.json"), "r", encoding="utf-8"
